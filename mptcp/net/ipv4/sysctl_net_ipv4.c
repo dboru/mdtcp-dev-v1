@@ -1154,6 +1154,13 @@ static struct ctl_table ipv4_net_table[] = {
 		.mode		= 0644,
 		.proc_handler	= proc_dointvec
 	},
+        {
+		.procname	= "tcp_mdtcp",
+		.data		= &sysctl_tcp_mdtcp,
+		.maxlen		= sizeof(int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec
+	},
 	{ }
 };
 

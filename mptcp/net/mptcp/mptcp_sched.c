@@ -2,6 +2,7 @@
 
 #include <linux/module.h>
 #include <net/mptcp.h>
+#include <linux/ktime.h>
 
 static DEFINE_SPINLOCK(mptcp_sched_list_lock);
 static LIST_HEAD(mptcp_sched_list);
@@ -177,11 +178,34 @@ static struct sock
 			}
 			found_unused = true;
 		}
-
+              
+             if (sysctl_tcp_mdtcp) {
+                   //static struct timeval _t;  
+                   //static struct timezone tz;  
+                   //gettimeofday(&_t, &tz);  
+                   //u32 ctime=()_t.tv_sec + (double)_t.tv_usec/(1000*1000);
+                if ((u32)jiffies > tp->mdtcp_wsrtt)
+                       tp->mdtcp_wsrtt = 0;
+                  
+              if (tp->srtt_us < min_srtt && tp->snd_cwnd > 2 && tp->mdtcp_wsrtt == 0) {
+			min_srtt = tp->srtt_us;
+			bestsk = sk;
+                        
+		} else if (tp->mdtcp_wsrtt == 0 && tp->snd_cwnd <= 2)  
+                   {
+                     tp->mdtcp_wsrtt=tp->srtt_us + (u32)jiffies; 
+                          
+                   }
+                    
+                   
+                      
+            } else {
+ 
 		if (tp->srtt_us < min_srtt) {
 			min_srtt = tp->srtt_us;
 			bestsk = sk;
 		}
+            }
 	}
 
 	if (bestsk) {

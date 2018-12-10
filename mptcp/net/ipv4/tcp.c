@@ -472,6 +472,8 @@ void tcp_init_sock(struct sock *sk)
 	sk->sk_rcvbuf = sysctl_tcp_rmem[1];
 
 	tp->ops = &tcp_specific;
+        /*Initialize MDTCP wait srtt*/
+        tp->mdtcp_wsrtt = 0; 
 
 	/* Initialize MPTCP-specific stuff and function-pointers */
 	mptcp_init_tcp_sock(sk);

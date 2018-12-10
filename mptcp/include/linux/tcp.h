@@ -456,6 +456,9 @@ struct tcp_sock {
 	char		mptcp_sched_name[MPTCP_SCHED_NAME_MAX];
 	char		mptcp_pm_name[MPTCP_PM_NAME_MAX];
 #endif /* CONFIG_MPTCP */
+//MDTCP -Dejene 
+u32 mdtcp_wsrtt; /*wait srtt if snd_cwd < 2 to select the subflow socket*/
+
 };
 
 enum tsq_enum {
