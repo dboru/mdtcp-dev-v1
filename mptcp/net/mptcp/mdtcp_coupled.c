@@ -1,3 +1,4 @@
+
 /*
  *	 Multipath Datacenter TCP(MDTCP)-a Coupled Congestion Control for Datacenter
  *
@@ -19,7 +20,7 @@
  *	John Ronan <jronan@tssg.org>
  *	Catalin Nicutar <catalin.nicutar@gmail.com>
  *	Brandon Heller <brandonh@stanford.edu>
- *  Dejene Boru Oljira <oljideje@kau.se>
+ *      Dejene Boru Oljira <oljideje@kau.se>
  *
  *
  *	This program is free software; you can redistribute it and/or
@@ -110,23 +111,9 @@ static inline void mdtcp_set_forced(const struct sock *meta_sk, bool force)
 	((struct mdtcp *)inet_csk_ca(meta_sk))->forced_update = force;
 }
 
-/* take care of artificially inflate (see RFC5681)
- * of cwnd during fast-retransmit phase
- */
-static u32 mdtcp_get_crt_cwnd(struct sock *sk)
-{
-	const struct inet_connection_sock *icsk = inet_csk(sk);
-
-	if (icsk->icsk_ca_state == TCP_CA_Recovery)
-		return tcp_sk(sk)->snd_ssthresh;
-	else
-		return tcp_sk(sk)->snd_cwnd;
-}
-
 static void mdtcp_reset(const struct tcp_sock *tp, struct mdtcp *ca)
 {
 	ca->next_seq = tp->snd_nxt;
-
 	ca->acked_bytes_ecn = 0;
 	ca->acked_bytes_total = 0;
 }
@@ -137,10 +124,16 @@ static u32 mdtcp_ssthresh(struct sock *sk)
 {
 	struct mdtcp *ca = inet_csk_ca(sk);
 	struct tcp_sock *tp = tcp_sk(sk);
-
+	u32 reduction;
 	ca->loss_cwnd = tp->snd_cwnd;
 
-	return max(tp->snd_cwnd - ((tp->snd_cwnd * ca->mdtcp_alpha) >> 11U), 2U);
+	/* Always reduce by at least 1MSS when receiving marks.*/
+	reduction = max((tp->snd_cwnd * ca->mdtcp_alpha) >> 11U, 1U);
+	return max(tp->snd_cwnd - reduction, 2U);
+
+	//return max(tp->snd_cwnd - ((tp->snd_cwnd * ca->mdtcp_alpha) >> 11U), 2U);
+
+
 }
 
 /* Minimal DCTP CE state machine:
@@ -154,20 +147,20 @@ static void mdtcp_ce_state_0_to_1(struct sock *sk)
 	struct mdtcp *ca = inet_csk_ca(sk);
 	struct tcp_sock *tp = tcp_sk(sk);
 
-        if (!ca->ce_state) {
+	if (!ca->ce_state) {
 		/* State has changed from CE=0 to CE=1, force an immediate
 		 * ACK to reflect the new CE state. If an ACK was delayed,
 		 * send that first to reflect the prior CE state.
 		 */
 		if (inet_csk(sk)->icsk_ack.pending & ICSK_ACK_TIMER)
 			__tcp_send_ack(sk, ca->prior_rcv_nxt);
-                //inet_csk(sk)->icsk_ack.pending |= ICSK_ACK_NOW;
+		//inet_csk(sk)->icsk_ack.pending |= ICSK_ACK_NOW;
 		tcp_enter_quickack_mode(sk, 1);
 	}
-       
-       ca->prior_rcv_nxt = tp->rcv_nxt;
-       ca->ce_state = 1;
-       tp->ecn_flags |= TCP_ECN_DEMAND_CWR;
+
+	ca->prior_rcv_nxt = tp->rcv_nxt;
+	ca->ce_state = 1;
+	tp->ecn_flags |= TCP_ECN_DEMAND_CWR;
 
 }
 
@@ -175,15 +168,15 @@ static void mdtcp_ce_state_1_to_0(struct sock *sk)
 {
 	struct mdtcp *ca = inet_csk_ca(sk);
 	struct tcp_sock *tp = tcp_sk(sk);
-        
-        if (ca->ce_state) {
+
+	if (ca->ce_state) {
 		/* State has changed from CE=1 to CE=0, force an immediate
 		 * ACK to reflect the new CE state. If an ACK was delayed,
 		 * send that first to reflect the prior CE state.
 		 */
 		if (inet_csk(sk)->icsk_ack.pending & ICSK_ACK_TIMER)
 			__tcp_send_ack(sk, ca->prior_rcv_nxt);
-                //inet_csk(sk)->icsk_ack.pending |= ICSK_ACK_NOW;
+		//inet_csk(sk)->icsk_ack.pending |= ICSK_ACK_NOW;
 		tcp_enter_quickack_mode(sk, 1);
 	}
 
@@ -204,7 +197,7 @@ static void mdtcp_update_alpha(struct sock *sk, u32 flags)
 	u32 acked_bytes = tp->snd_una - ca->prior_snd_una;
 	//struct inet_sock *inet = inet_sk(sk);
 	//struct timespec tv = ktime_to_timespec(ktime_sub(ktime_get(), ca->start));
-	 const struct mptcp_cb *mpcb = tcp_sk(sk)->mpcb;
+	const struct mptcp_cb *mpcb = tcp_sk(sk)->mpcb;
 	/* If ack did not advance snd_una, count dupack as MSS size.
 	 * If ack did update window, do not count it at all.
 	 */
@@ -231,11 +224,8 @@ static void mdtcp_update_alpha(struct sock *sk, u32 flags)
 			do_div(bytes_ecn, max(1U, ca->acked_bytes_total));
 			alpha = min(alpha + (u32)bytes_ecn, MDTCP_MAX_ALPHA);
 		}
-               	
-        	/* mdtcp_alpha can be read from mdtcp_get_info() without
-		 * synchro, so we ask compiler to not use mdtcp_alpha
-		 * as a temporary variable in prior operations.
-		 */
+
+
 		WRITE_ONCE(ca->mdtcp_alpha, alpha);
 
 		if (mpcb && mdtcp_debug && alpha)
@@ -244,19 +234,15 @@ static void mdtcp_update_alpha(struct sock *sk, u32 flags)
 
 		mdtcp_reset(tp, ca);
 	}
-     
-       
- //      #if 0 
-	
- //       if (ntohs(inet->inet_sport) != 5001 && mdtcp_debug) {
-	// 	printk("ktime: %lu.%09lu cwnd: %u dctcp-alfa: %u srcip %pI4/%u dstip %pI4/%u rtt: %u pi: %d \n",
-	// 			(unsigned long) tv.tv_sec, (unsigned long) tv.tv_nsec, tp->snd_cwnd, ca->mdtcp_alpha, &inet->inet_saddr,
-	// 			ntohs(inet->inet_sport), &inet->inet_daddr,
-	// 			ntohs(inet->inet_dport), tp->srtt_us >> 3,tp->mptcp->path_index);
-	// } 
 
- //       #endif
-	
+	// if (flags && CA_ACK_ECE) {
+
+	// 	unsigned int cwnd = mdtcp_ssthresh(sk);
+
+	// 	if (cwnd !=tp->snd_cwnd)
+	// 		tp->snd_cwnd=cwnd;
+
+	// }
 
 }
 
@@ -268,12 +254,12 @@ static u32 mdtcp_cwnd_undo(struct sock *sk)
 }
 
 static void mdtcp_recalc_beta( const struct sock *sk)
-{     	//const struct mdtcp *ca = inet_csk_ca(sk);
+{     	
 
 	const struct mptcp_cb *mpcb = tcp_sk(sk)->mpcb;
 	struct sock *sub_sk;
 	u64 beta = 0;
-        
+
 	int best_rtt = 1,can_send=0;
 
 	if (!mpcb)
@@ -306,15 +292,16 @@ static void mdtcp_recalc_beta( const struct sock *sk)
 		struct tcp_sock *sub_tp = tcp_sk(sub_sk);
 		if (!mdtcp_sk_can_send(sub_sk))
 			continue;
-                //u32 tmp_cwnd; 
-                //tmp_cwnd = mdtcp_get_crt_cwnd(sub_sk);
+		//u32 tmp_cwnd; 
+		//tmp_cwnd = mdtcp_get_crt_cwnd(sub_sk);
 
 		beta += div_u64((u64)beta_scale * sub_tp->snd_cwnd * best_rtt, sub_tp->srtt_us);
-                //beta += div_u64((u64)beta_scale * tmp_cwnd * best_rtt, sub_tp->srtt_us);
+		//beta += div_u64((u64)beta_scale * tmp_cwnd * best_rtt, sub_tp->srtt_us);
 
-              
+
 		//if(mdtcp_debug)
-		//	printk("beta: %llu cwnd: %u rtt: %u  best_rtt: %u no.subflows %u pi: %u  \n",beta,sub_tp->snd_cwnd,sub_tp->srtt_us>>3,best_rtt>>3,mpcb->cnt_established,sub_tp->mptcp->path_index);
+		//printk("beta: %llu cwnd: %u rtt: %u  best_rtt: %u no.subflows %u pi: %u  \n",\
+		//beta,sub_tp->snd_cwnd,sub_tp->srtt_us>>3,best_rtt>>3,mpcb->cnt_established,sub_tp->mptcp->path_index);
 
 	}
 
@@ -323,7 +310,6 @@ static void mdtcp_recalc_beta( const struct sock *sk)
 
 exit:
 	mdtcp_set_beta(mptcp_meta_sk(sk), beta);
-
 
 }
 
@@ -342,7 +328,7 @@ static void mdtcp_init(struct sock *sk)
 		ca->prior_snd_una = tp->snd_una;
 		ca->prior_rcv_nxt = tp->rcv_nxt;
 		ca->mdtcp_alpha = min(mdtcp_alpha_on_init, MDTCP_MAX_ALPHA);
-		
+
 		ca->loss_cwnd = 0;
 		ca->ce_state = 0;
 
@@ -353,35 +339,45 @@ static void mdtcp_init(struct sock *sk)
 				(sk->sk_state == TCP_LISTEN ||
 				 sk->sk_state == TCP_CLOSE))) {
 
-		//mdtcp_set_forced(mptcp_meta_sk(sk), 0);
-		//mdtcp_set_beta(mptcp_meta_sk(sk), beta_scale);
-
 		ca->prior_snd_una = tp->snd_una;
 		ca->prior_rcv_nxt = tp->rcv_nxt;
 		ca->mdtcp_alpha = min(mdtcp_alpha_on_init, MDTCP_MAX_ALPHA);
 		ca->loss_cwnd = 0;
 		ca->ce_state = 0;
+		if(mdtcp_debug)
+			printk("MPTCP not enabled, do DCTCP\n");
 		mdtcp_reset(tp, ca);
 		return;
 
 	}
 
-
-
 	/* If we do not mdtcp, behave like reno: return */
-
 	inet_csk(sk)->icsk_ca_ops = &mdtcp_reno;
 	INET_ECN_dontxmit(sk);
 
 }
 
 
+static void mdtcp_react_to_loss(struct sock *sk)
+{
+	struct mdtcp *ca = inet_csk_ca(sk);
+	struct tcp_sock *tp = tcp_sk(sk);
+
+	ca->loss_cwnd = tp->snd_cwnd;
+	/* Stay fair with reno/cubic (RFC-style) */
+	tp->snd_ssthresh = max(tp->snd_cwnd >> 1U, 2U);
+}
 
 static void mdtcp_state(struct sock *sk, u8 ca_state)
 {
-	if (!mptcp(tcp_sk(sk)))
-		return;
-	mdtcp_set_forced(mptcp_meta_sk(sk), 1);
+	if (ca_state == TCP_CA_Recovery
+			&& ca_state != inet_csk(sk)->icsk_ca_state)
+		/* React to the first fast retransmission of this window. */
+		mdtcp_react_to_loss(sk);
+
+	if (mptcp(tcp_sk(sk)))
+		mdtcp_set_forced(mptcp_meta_sk(sk), 1);
+
 
 	if (mdtcp_clamp_alpha_on_loss && ca_state == TCP_CA_Loss) {
 		struct mdtcp *ca = inet_csk_ca(sk);
@@ -393,6 +389,10 @@ static void mdtcp_state(struct sock *sk, u8 ca_state)
 		 * this in practice turned out to be beneficial, and
 		 * effectively assumes total congestion which reduces the
 		 * window by half.
+		 * Additionnally, this will cause the next cwnd reduction
+		 * computed by dctcp_ssthresh() to be quite large even if the
+		 * loss was a one time event due to the historical term in
+		 * dctcp_alpha's EWMA.
 		 */
 		ca->mdtcp_alpha = MDTCP_MAX_ALPHA;
 	}
@@ -422,11 +422,9 @@ static void mdtcp_cong_avoid(struct sock *sk, u32 ack, u32 acked)
 {
 	struct tcp_sock *tp = tcp_sk(sk);
 	const struct mptcp_cb *mpcb = tp->mpcb;
-	//struct mdtcp *ca = inet_csk_ca(sk);
 
 	int snd_cwnd = 0;
 
-	//u32 old_cwnd = 0;
 
 	if (!mptcp(tp) ) {
 		tcp_reno_cong_avoid(sk, ack, acked);
@@ -448,62 +446,22 @@ static void mdtcp_cong_avoid(struct sock *sk, u32 ack, u32 acked)
 		mdtcp_set_forced(mptcp_meta_sk(sk), 0);
 	}
 
+	u64 beta = mdtcp_get_beta(mptcp_meta_sk(sk));
 
-	if (mpcb->cnt_established > 1) {
+	/* This may happen, if at the initialization, the mpcb
+	 * was not yet attached to the sock, and thus
+	 * initializing beta failed.
+	 */
+	if (unlikely(!beta))
+		beta = beta_scale;
+	snd_cwnd = (int) div_u64(beta, beta_scale);
 
-		u64 beta = mdtcp_get_beta(mptcp_meta_sk(sk));
-
-		/* This may happen, if at the initialization, the mpcb
-		 * was not yet attached to the sock, and thus
-		 * initializing beta failed.
-		 */
-		if (unlikely(!beta))
-			beta = beta_scale;
-		snd_cwnd = (int) div_u64(beta, beta_scale);
-
-		//if(mdtcp_debug)
-		//	printk("beta: %llu cwnd: %u snd_cwnd: %u no.subflows %u pi: %d  acked: %u\n"
-		//			,beta,tp->snd_cwnd,snd_cwnd,mpcb->cnt_established,tp->mptcp->path_index,acked);
-
-		if (snd_cwnd < tp->snd_cwnd)
-			snd_cwnd = tp->snd_cwnd;
-		if (mpcb->cnt_established > 2 ) {
-			if (mdtcp_reno_ai) {
-				   if (mdtcp_frac_ack && acked > 1)
-				   	mdtcp_cong_avoid_ai(tp, snd_cwnd, acked>>mdtcp_frac_ack);
-                   else
-                   	mdtcp_cong_avoid_ai(tp, snd_cwnd, acked);
-
-                   mdtcp_recalc_beta(sk);
+	if (snd_cwnd < tp->snd_cwnd)
+		snd_cwnd = tp->snd_cwnd;
+	mdtcp_cong_avoid_ai(tp, snd_cwnd, acked);
+	mdtcp_recalc_beta(sk);
 
 
-			} else {	
-				if (tp->snd_cwnd_cnt >= snd_cwnd) {
-					if (tp->snd_cwnd < tp->snd_cwnd_clamp) {
-						tp->snd_cwnd++;
-						mdtcp_recalc_beta(sk);
-					}
-
-					tp->snd_cwnd_cnt = 0;
-
-				}  else {
-					tp->snd_cwnd_cnt++;
-
-				}
-			}
-		}  else {
-
-			mdtcp_cong_avoid_ai(tp, snd_cwnd, acked);
-			mdtcp_recalc_beta(sk);
-
-		}
-
-
-	} else { 
-		snd_cwnd = tp->snd_cwnd;	
-		mdtcp_cong_avoid_ai(tp, snd_cwnd, acked);
-		//mdtcp_recalc_beta(sk);
-	}
 
 }
 
@@ -513,16 +471,22 @@ static void mdtcp_cwnd_event(struct sock *sk, enum tcp_ca_event ev)
 	struct tcp_sock *tp = tcp_sk(sk);
 
 	switch (ev) {
-		case CA_EVENT_LOSS:
-			if(mptcp(tp))
-				mdtcp_recalc_beta(sk); 
-			break;
+
 		case CA_EVENT_ECN_IS_CE:
 			mdtcp_ce_state_0_to_1(sk);
 			break;
 		case CA_EVENT_ECN_NO_CE:
 			mdtcp_ce_state_1_to_0(sk);
 			break;
+		case CA_EVENT_LOSS:
+			/* React to a RTO if not other ssthresh reduction took place
+			 * inside this window.
+			 */
+			mdtcp_react_to_loss(sk);
+			if(mptcp(tp))
+				mdtcp_recalc_beta(sk);
+			break;
+
 		default:
 			/* Don't care for the rest. */
 			break;

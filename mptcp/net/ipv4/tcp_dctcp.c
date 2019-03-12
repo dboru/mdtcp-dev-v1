@@ -113,9 +113,15 @@ static u32 dctcp_ssthresh(struct sock *sk)
 {
 	struct dctcp *ca = inet_csk_ca(sk);
 	struct tcp_sock *tp = tcp_sk(sk);
+        u32 reduction;
+        ca->loss_cwnd = tp->snd_cwnd;
+        /* Always reduce by at least 1MSS when receiving marks.*/
+        reduction = max((tp->snd_cwnd * ca->dctcp_alpha) >> 11U, 1U);
 
-	ca->loss_cwnd = tp->snd_cwnd;
-	return max(tp->snd_cwnd - ((tp->snd_cwnd * ca->dctcp_alpha) >> 11U), 2U);
+	//ca->loss_cwnd = tp->snd_cwnd;
+	//return max(tp->snd_cwnd - ((tp->snd_cwnd * ca->dctcp_alpha) >> 11U), 2U);
+
+       return max(tp->snd_cwnd - reduction, 2U);
 }
 
 /* Minimal DCTP CE state machine:
@@ -168,8 +174,10 @@ static void dctcp_ce_state_1_to_0(struct sock *sk)
 
 static void dctcp_update_alpha(struct sock *sk, u32 flags)
 {
+	//struct tcp_sock *tp = tcp_sk(sk);
 	const struct tcp_sock *tp = tcp_sk(sk);
-	struct dctcp *ca = inet_csk_ca(sk);
+
+        struct dctcp *ca = inet_csk_ca(sk);
 	u32 acked_bytes = tp->snd_una - ca->prior_snd_una;
 
 	/* If ack did not advance snd_una, count dupack as MSS size.
@@ -209,10 +217,25 @@ static void dctcp_update_alpha(struct sock *sk, u32 flags)
 		WRITE_ONCE(ca->dctcp_alpha, alpha);
 		dctcp_reset(tp, ca);
 	}
+
 }
 
+static void dctcp_react_to_loss(struct sock *sk)
+ {
+ 	struct dctcp *ca = inet_csk_ca(sk);
+ 	struct tcp_sock *tp = tcp_sk(sk);
+
+  	ca->loss_cwnd = tp->snd_cwnd;
+ 	/* Stay fair with reno/cubic (RFC-style) */
+ 	tp->snd_ssthresh = max(tp->snd_cwnd >> 1U, 2U);
+ }
+
 static void dctcp_state(struct sock *sk, u8 new_state)
-{
+{      if (new_state == TCP_CA_Recovery
+ 	    && new_state != inet_csk(sk)->icsk_ca_state)
+ 		/* React to the first fast retransmission of this window. */
+ 		dctcp_react_to_loss(sk);
+
 	if (dctcp_clamp_alpha_on_loss && new_state == TCP_CA_Loss) {
 		struct dctcp *ca = inet_csk_ca(sk);
 
@@ -223,6 +246,10 @@ static void dctcp_state(struct sock *sk, u8 new_state)
 		 * this in practice turned out to be beneficial, and
 		 * effectively assumes total congestion which reduces the
 		 * window by half.
+                 * Additionnally, this will cause the next cwnd reduction
+ 		 * computed by dctcp_ssthresh() to be quite large even if the
+ 		 * loss was a one time event due to the historical term in
+ 		 * dctcp_alpha's EWMA.
 		 */
 		ca->dctcp_alpha = DCTCP_MAX_ALPHA;
 	}
@@ -237,12 +264,18 @@ static void dctcp_cwnd_event(struct sock *sk, enum tcp_ca_event ev)
 	case CA_EVENT_ECN_NO_CE:
 		dctcp_ce_state_1_to_0(sk);
 		break;
+        case CA_EVENT_LOSS:
+ 		/* React to a RTO if not other ssthresh reduction took place
+ 		 * inside this window.
+ 		 */
+ 		dctcp_react_to_loss(sk);
+ 		break;
 	default:
 		/* Don't care for the rest. */
 		break;
 	}
 }
-
+	
 static size_t dctcp_get_info(struct sock *sk, u32 ext, int *attr,
 			     union tcp_cc_info *info)
 {

@@ -872,4 +872,38 @@ struct tc_pie_xstats {
 	__u32 maxq;             /* maximum queue size */
 	__u32 ecn_mark;         /* packets marked with ecn*/
 };
+
+/* DUALPI2 */
+enum {
+       TCA_DUALPI2_UNSPEC,
+       TCA_DUALPI2_ALPHA,
+       TCA_DUALPI2_BETA,
+       TCA_DUALPI2_DUALQ,
+       TCA_DUALPI2_ECN,
+       TCA_DUALPI2_K,
+       TCA_DUALPI2_L_DROP,
+       TCA_DUALPI2_ET_PACKETS,
+       TCA_DUALPI2_L_THRESH,
+       TCA_DUALPI2_LIMIT,
+       TCA_DUALPI2_T_SHIFT,
+       TCA_DUALPI2_T_SPEED,
+       TCA_DUALPI2_TARGET,
+       TCA_DUALPI2_TUPDATE,
+       TCA_DUALPI2_DROP_EARLY,
+       __TCA_DUALPI2_MAX
+};
+#define TCA_DUALPI2_MAX   (__TCA_DUALPI2_MAX - 1)
+struct tc_dualpi2_xstats {
+               __u32 prob;
+               __u32 delay;
+               __u32 avg_dq_rate;
+               __u32 packets_in;
+               __u32 overlimit;
+               __u32 maxq;
+               __u32 dropped;
+               __u32 ecn_mark;
+       };
+
 #endif
+
+

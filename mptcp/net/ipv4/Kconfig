@@ -765,7 +765,7 @@ choice
 		bool "Balia" if TCP_CONG_BALIA=y
 
 	config DEFAULT_MDTCP
-		bool "Balia" if TCP_CONG_MDTCP=y
+		bool "Mdtcp" if TCP_CONG_MDTCP=y
 
 	config DEFAULT_RENO
 		bool "Reno"
