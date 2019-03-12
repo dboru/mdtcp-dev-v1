@@ -72,14 +72,6 @@ static unsigned int beta_scale __read_mostly = 1024;
 module_param(beta_scale, uint, 0644);
 MODULE_PARM_DESC(beta_scale, "scale beta for precision");
 
-static unsigned int mdtcp_frac_ack __read_mostly = 0; 
-module_param(mdtcp_frac_ack, uint, 0644);
-MODULE_PARM_DESC(mdtcp_frac_ack, "increament snd_cwnd_cnt by acked/mdtcp_frac_ack");
-
-static unsigned int mdtcp_reno_ai __read_mostly = 0; 
-module_param(mdtcp_reno_ai, uint, 0644);
-MODULE_PARM_DESC(mdtcp_reno_ai, "increament snd_cwnd_cnt similar to tcp_newreno_ai");
-
 /*end mdtcp*/
 
 
@@ -195,8 +187,6 @@ static void mdtcp_update_alpha(struct sock *sk, u32 flags)
 	struct tcp_sock *tp = tcp_sk(sk);
 	struct mdtcp *ca = inet_csk_ca(sk);
 	u32 acked_bytes = tp->snd_una - ca->prior_snd_una;
-	//struct inet_sock *inet = inet_sk(sk);
-	//struct timespec tv = ktime_to_timespec(ktime_sub(ktime_get(), ca->start));
 	const struct mptcp_cb *mpcb = tcp_sk(sk)->mpcb;
 	/* If ack did not advance snd_una, count dupack as MSS size.
 	 * If ack did update window, do not count it at all.
@@ -235,14 +225,7 @@ static void mdtcp_update_alpha(struct sock *sk, u32 flags)
 		mdtcp_reset(tp, ca);
 	}
 
-	// if (flags && CA_ACK_ECE) {
 
-	// 	unsigned int cwnd = mdtcp_ssthresh(sk);
-
-	// 	if (cwnd !=tp->snd_cwnd)
-	// 		tp->snd_cwnd=cwnd;
-
-	// }
 
 }
 
@@ -258,7 +241,7 @@ static void mdtcp_recalc_beta( const struct sock *sk)
 
 	const struct mptcp_cb *mpcb = tcp_sk(sk)->mpcb;
 	struct sock *sub_sk;
-	u64 beta = 0;
+	u64 beta = 1;
 
 	int best_rtt = 1,can_send=0;
 
@@ -292,17 +275,7 @@ static void mdtcp_recalc_beta( const struct sock *sk)
 		struct tcp_sock *sub_tp = tcp_sk(sub_sk);
 		if (!mdtcp_sk_can_send(sub_sk))
 			continue;
-		//u32 tmp_cwnd; 
-		//tmp_cwnd = mdtcp_get_crt_cwnd(sub_sk);
-
 		beta += div_u64((u64)beta_scale * sub_tp->snd_cwnd * best_rtt, sub_tp->srtt_us);
-		//beta += div_u64((u64)beta_scale * tmp_cwnd * best_rtt, sub_tp->srtt_us);
-
-
-		//if(mdtcp_debug)
-		//printk("beta: %llu cwnd: %u rtt: %u  best_rtt: %u no.subflows %u pi: %u  \n",\
-		//beta,sub_tp->snd_cwnd,sub_tp->srtt_us>>3,best_rtt>>3,mpcb->cnt_established,sub_tp->mptcp->path_index);
-
 	}
 
 	if (unlikely(!beta))
@@ -344,8 +317,6 @@ static void mdtcp_init(struct sock *sk)
 		ca->mdtcp_alpha = min(mdtcp_alpha_on_init, MDTCP_MAX_ALPHA);
 		ca->loss_cwnd = 0;
 		ca->ce_state = 0;
-		if(mdtcp_debug)
-			printk("MPTCP not enabled, do DCTCP\n");
 		mdtcp_reset(tp, ca);
 		return;
 
@@ -424,6 +395,7 @@ static void mdtcp_cong_avoid(struct sock *sk, u32 ack, u32 acked)
 	const struct mptcp_cb *mpcb = tp->mpcb;
 
 	int snd_cwnd = 0;
+        u64 beta;
 
 
 	if (!mptcp(tp) ) {
@@ -446,7 +418,7 @@ static void mdtcp_cong_avoid(struct sock *sk, u32 ack, u32 acked)
 		mdtcp_set_forced(mptcp_meta_sk(sk), 0);
 	}
 
-	u64 beta = mdtcp_get_beta(mptcp_meta_sk(sk));
+	 beta = mdtcp_get_beta(mptcp_meta_sk(sk));
 
 	/* This may happen, if at the initialization, the mpcb
 	 * was not yet attached to the sock, and thus
@@ -460,7 +432,6 @@ static void mdtcp_cong_avoid(struct sock *sk, u32 ack, u32 acked)
 		snd_cwnd = tp->snd_cwnd;
 	mdtcp_cong_avoid_ai(tp, snd_cwnd, acked);
 	mdtcp_recalc_beta(sk);
-
 
 
 }
@@ -484,7 +455,7 @@ static void mdtcp_cwnd_event(struct sock *sk, enum tcp_ca_event ev)
 			 */
 			mdtcp_react_to_loss(sk);
 			if(mptcp(tp))
-				mdtcp_recalc_beta(sk);
+			    mdtcp_recalc_beta(sk);
 			break;
 
 		default:
