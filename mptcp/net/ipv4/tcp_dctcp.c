@@ -113,15 +113,15 @@ static u32 dctcp_ssthresh(struct sock *sk)
 {
 	struct dctcp *ca = inet_csk_ca(sk);
 	struct tcp_sock *tp = tcp_sk(sk);
-        u32 reduction;
+        //u32 reduction;
         ca->loss_cwnd = tp->snd_cwnd;
         /* Always reduce by at least 1MSS when receiving marks.*/
-        reduction = max((tp->snd_cwnd * ca->dctcp_alpha) >> 11U, 1U);
+        //reduction = max((tp->snd_cwnd * ca->dctcp_alpha) >> 11U, 1U);
 
-	//ca->loss_cwnd = tp->snd_cwnd;
-	//return max(tp->snd_cwnd - ((tp->snd_cwnd * ca->dctcp_alpha) >> 11U), 2U);
+	
+        return max(tp->snd_cwnd - ((tp->snd_cwnd * ca->dctcp_alpha) >> 11U), 2U);
 
-       return max(tp->snd_cwnd - reduction, 2U);
+       //return max(tp->snd_cwnd - reduction, 2U);
 }
 
 /* Minimal DCTP CE state machine:
