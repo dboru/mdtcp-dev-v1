@@ -231,10 +231,10 @@ static void dctcp_react_to_loss(struct sock *sk)
  }
 
 static void dctcp_state(struct sock *sk, u8 new_state)
-{      if (new_state == TCP_CA_Recovery
- 	    && new_state != inet_csk(sk)->icsk_ca_state)
+{      //if (new_state == TCP_CA_Recovery
+ 	//    && new_state != inet_csk(sk)->icsk_ca_state)
  		/* React to the first fast retransmission of this window. */
- 		dctcp_react_to_loss(sk);
+ 	//	dctcp_react_to_loss(sk);
 
 	if (dctcp_clamp_alpha_on_loss && new_state == TCP_CA_Loss) {
 		struct dctcp *ca = inet_csk_ca(sk);
@@ -268,7 +268,7 @@ static void dctcp_cwnd_event(struct sock *sk, enum tcp_ca_event ev)
  		/* React to a RTO if not other ssthresh reduction took place
  		 * inside this window.
  		 */
- 		dctcp_react_to_loss(sk);
+ 		//dctcp_react_to_loss(sk);
  		break;
 	default:
 		/* Don't care for the rest. */

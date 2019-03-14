@@ -341,12 +341,12 @@ static void mdtcp_react_to_loss(struct sock *sk)
 
 static void mdtcp_state(struct sock *sk, u8 ca_state)
 {
-	
+
 	if (mptcp(tcp_sk(sk)))
 		mdtcp_set_forced(mptcp_meta_sk(sk), 1);
-        
-        //if (ca_state == TCP_CA_Recovery && ca_state != inet_csk(sk)->icsk_ca_state)
-		/* React to the first fast retransmission of this window. */
+
+	//	if (ca_state == TCP_CA_Recovery && ca_state != inet_csk(sk)->icsk_ca_state)
+	/* React to the first fast retransmission of this window. */
 	//	mdtcp_react_to_loss(sk);
 
 
@@ -394,7 +394,7 @@ static void mdtcp_cong_avoid(struct sock *sk, u32 ack, u32 acked)
 	struct tcp_sock *tp = tcp_sk(sk);
 	const struct mptcp_cb *mpcb = tp->mpcb;
 	int snd_cwnd = 0,snd_cwnd_old=0;
-        u64 beta;
+	u64 beta;
 
 
 	if (!mptcp(tp) ) {
@@ -410,35 +410,51 @@ static void mdtcp_cong_avoid(struct sock *sk, u32 ack, u32 acked)
 		mdtcp_recalc_beta(sk);
 		return;
 	}
-        if (mpcb->cnt_established > 1) { 
+	if (mpcb->cnt_established > 1) { 
 
-	if (mdtcp_get_forced(mptcp_meta_sk(sk)) ) {
-		mdtcp_recalc_beta(sk);
-		mdtcp_set_forced(mptcp_meta_sk(sk), 0);
-	}
+		if (mdtcp_get_forced(mptcp_meta_sk(sk)) ) {
+			mdtcp_recalc_beta(sk);
+			mdtcp_set_forced(mptcp_meta_sk(sk), 0);
+		}
 
-	 beta = mdtcp_get_beta(mptcp_meta_sk(sk));
+		beta = mdtcp_get_beta(mptcp_meta_sk(sk));
 
-	/* This may happen, if at the initialization, the mpcb
-	 * was not yet attached to the sock, and thus
-	 * initializing beta failed.
-	 */
-	if (unlikely(!beta))
-		beta = beta_scale;
+		/* This may happen, if at the initialization, the mpcb
+		 * was not yet attached to the sock, and thus
+		 * initializing beta failed.
+		 */
+		if (unlikely(!beta))
+			beta = beta_scale;
 
-	snd_cwnd = (int) div_u64(beta, beta_scale);
+		snd_cwnd = (int) div_u64(beta, beta_scale);
 
-	if (snd_cwnd < tp->snd_cwnd)
+		if (snd_cwnd < tp->snd_cwnd)
+			snd_cwnd = tp->snd_cwnd;
+		//snd_cwnd_old = snd_cwnd;
+		if (mpcb->cnt_established == 2) { 
+
+			mdtcp_cong_avoid_ai(tp, snd_cwnd, acked);
+			mdtcp_recalc_beta(sk);
+
+		} else { 
+
+			if (tp->snd_cwnd_cnt >= snd_cwnd) {
+				if (tp->snd_cwnd < tp->snd_cwnd_clamp) {
+					tp->snd_cwnd++;
+					mdtcp_recalc_beta(sk);
+				}
+
+				tp->snd_cwnd_cnt = 0;
+			} else {
+				tp->snd_cwnd_cnt++;
+			}
+
+		}
+
+	} else {
+
 		snd_cwnd = tp->snd_cwnd;
-        snd_cwnd_old = snd_cwnd;
-        
-	mdtcp_cong_avoid_ai(tp, snd_cwnd, acked);
-        if (tp->snd_cwnd != snd_cwnd_old)
-	     mdtcp_recalc_beta(sk);
-     } else {
-	     
-             snd_cwnd = tp->snd_cwnd;
-             mdtcp_cong_avoid_ai(tp, snd_cwnd, acked);
+		mdtcp_cong_avoid_ai(tp, snd_cwnd, acked);
 	}
 
 
@@ -461,9 +477,9 @@ static void mdtcp_cwnd_event(struct sock *sk, enum tcp_ca_event ev)
 			/* React to a RTO if not other ssthresh reduction took place
 			 * inside this window.
 			 */
-			//mdtcp_react_to_loss(sk);
+			// mdtcp_react_to_loss(sk);
 			if(mptcp(tp))
-			    mdtcp_recalc_beta(sk);
+				mdtcp_recalc_beta(sk);
 			break;
 
 		default:
