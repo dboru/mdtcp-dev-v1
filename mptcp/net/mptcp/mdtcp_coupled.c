@@ -341,13 +341,13 @@ static void mdtcp_react_to_loss(struct sock *sk)
 
 static void mdtcp_state(struct sock *sk, u8 ca_state)
 {
+       if (ca_state == TCP_CA_Recovery && ca_state != inet_csk(sk)->icsk_ca_state)
+	        /* React to the first fast retransmission of this window. */
+		mdtcp_react_to_loss(sk);
+
 
 	if (mptcp(tcp_sk(sk)))
 		mdtcp_set_forced(mptcp_meta_sk(sk), 1);
-
-	//	if (ca_state == TCP_CA_Recovery && ca_state != inet_csk(sk)->icsk_ca_state)
-	/* React to the first fast retransmission of this window. */
-	//	mdtcp_react_to_loss(sk);
 
 
 	if (mdtcp_clamp_alpha_on_loss && ca_state == TCP_CA_Loss) {
@@ -477,7 +477,7 @@ static void mdtcp_cwnd_event(struct sock *sk, enum tcp_ca_event ev)
 			/* React to a RTO if not other ssthresh reduction took place
 			 * inside this window.
 			 */
-			// mdtcp_react_to_loss(sk);
+			 mdtcp_react_to_loss(sk);
 			if(mptcp(tp))
 				mdtcp_recalc_beta(sk);
 			break;
